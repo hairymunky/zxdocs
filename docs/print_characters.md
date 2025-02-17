@@ -157,3 +157,78 @@ An example snippet using this would be:
 HELLO:
     DEFB 0x47, "HELLO, WORL", 0xC4
 ```
+
+## Inline string style
+This method keeps the string data in with the routine that wants to print it. The string isnt
+stored elsewhere. This means that some disassemblers will see the text as opcodes and will end
+up creating decompiled code that is incorrect. It was used in loads of games, and is also
+the method taught in the `Mastering machine code on your ZX Spectrum` Book.
+Unlike the method above, these strings are NULL terminated rather than setting the hi-bit
+on the last character.
+
+The first part is your code, and how you would set up the program to print the string -
+The first byte is the length of the string (less the /0) and the following two bytes
+are the screen position (in screen address. Note this is 0x4007 not 0x0740 in this example)
+
+```
+    CALL PRINTSTRING
+    DEFB 0x0B, 0x07, 0x40, "Hello World", 0
+
+    ; Rest of program continues here...
+```
+
+As you can see there is no RET or jump statement after the call, the program just continues. This
+is possible due the the print routines manipulation of the call stack as we will see -
+
+```
+PRINTSTRING:
+
+    POP HL          ; Pop the return address from the stack into HL
+                    ; This address will be the start of the string data
+.notFinished:
+    LD C,(HL)       ;
+    XOR A
+    OR C            ; Check if the byte was 0 - End of string
+    INC HL          ; Next address
+    PUSH HL         ; Save the return address to the stack
+    RET Z           ; return the the new address, skipping the string data
+    POP HL          ; Get the address back
+    LD E,(HL)       ;
+    INC HL          ;
+    LD D,(HL)       ;
+    INC HL          ;
+    CALL PRINTCHAR  ;
+    JR .notFinished ; Keep going until we find a 0 byte
+
+PRINTCHAR:
+    PUSH HL         ;
+    LD L,(HL)       ;
+    CALL DRAWCHAR   ;
+    POP HL          ;
+    INC HL          ;
+    DEC C           ;
+    JR NZ,PRINTCHAR ;
+    RET             ;
+
+DRAWCHAR:
+    PUSH DE         ;
+    LD DE,0x3C00    ; 256 less than bitmap font address (also pointed to by CHARS)
+    LD H,E          ;
+    ADD HL,HL       ;
+    ADD HL,HL       ;
+    ADD HL,HL       ;
+    ADD HL,DE       ;
+    POP DE          ;
+    PUSH DE         ;
+    LD B,0x08       ;
+.chrLP:
+    LD A,(HL)       ;
+    LD (DE),A       ;
+    INC D           ;
+    INC HL          ;
+    DJNZ .chrLP     ;
+    POP DE          ;
+    INC DE          ;
+    RET             ;
+
+```
